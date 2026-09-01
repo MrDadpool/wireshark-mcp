@@ -751,11 +751,23 @@ def test_resolve_rejects_absolute_path_outside_sandbox(store):
     assert caught.value.kind is ErrorKind.PATH_REJECTED
 
 
-def test_resolve_rejects_unc_and_drive_relative_paths(store):
-    for hostile in (r"\\server\share\x.pcapng", r"C:\Windows\System32\config\SAM"):
-        with pytest.raises(ToolError) as caught:
-            store.resolve(hostile)
-        assert caught.value.kind is ErrorKind.PATH_REJECTED
+def test_resolve_rejects_unc_paths(store):
+    with pytest.raises(ToolError) as caught:
+        store.resolve(r"\\server\share\x.pcapng")
+    assert caught.value.kind is ErrorKind.PATH_REJECTED
+
+
+def test_resolve_rejects_drive_relative_paths(store):
+    with pytest.raises(ToolError) as caught:
+        store.resolve("C:sneaky.pcapng")
+    assert caught.value.kind is ErrorKind.PATH_REJECTED
+
+
+def test_resolve_rejects_rooted_windows_path_outside_sandbox(store):
+    """Allowed past the drive check, then rejected by the sandbox check."""
+    with pytest.raises(ToolError) as caught:
+        store.resolve(r"C:\Windows\System32\config\SAM")
+    assert caught.value.kind is ErrorKind.PATH_REJECTED
 
 
 def test_resolve_rejects_symlink_escaping_sandbox(store, tmp_path):
@@ -851,10 +863,16 @@ class CaptureStore:
         if not capture_ref or capture_ref.strip() != capture_ref:
             raise self._reject(capture_ref, "empty or padded reference")
 
-        # Reject Windows-shaped hostile paths on every platform, so a macOS host
-        # cannot be used to smuggle one through into a shared config.
-        if capture_ref.startswith("\\\\") or ntpath.splitdrive(capture_ref)[0]:
-            raise self._reject(capture_ref, "UNC or drive-relative path")
+        # UNC paths are always rejected. A drive-relative path ("C:foo", no
+        # separator after the colon) is rejected too: it resolves against a
+        # per-drive current directory, which is not a sandbox we control. A
+        # rooted drive path ("C:\\dir\\file") is allowed through to the sandbox
+        # check below, because on Windows every legitimate absolute path has one.
+        if capture_ref.startswith("\\\\\\\\") or capture_ref.startswith("//"):
+            raise self._reject(capture_ref, "UNC path")
+        drive, rest = ntpath.splitdrive(capture_ref)
+        if drive and not rest.startswith(("\\\\", "/")):
+            raise self._reject(capture_ref, "drive-relative path")
 
         candidates = [Path(capture_ref)]
         if "/" not in capture_ref and "\\" not in capture_ref:
@@ -911,7 +929,7 @@ class CaptureStore:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `uv run pytest tests/test_store.py -v`
-Expected: 12 passed
+Expected: 14 passed
 
 - [ ] **Step 5: Commit**
 
@@ -1078,7 +1096,7 @@ Claude-Session: https://claude.ai/code/session_01VUC66Mkn8NR63wjmvVpiGd"
 - Test: `tests/test_tshark_argv.py`
 
 **Interfaces:**
-- Consumes: `find_binary`, `Config`, `clamp`, `MAX_LIMIT`, `run_command`, `check`, `ToolError`, `ErrorKind`.
+- Consumes: `find_binary`, `Config`, `run_command`, `check`, `ToolError`, `ErrorKind`. (Limit clamping belongs to the server layer, not here — do not import `clamp` in this module; ruff fails on unused imports.)
 - Produces: `STAT_TYPES: frozenset[str]` = `{"tcp", "udp", "ip", "eth"}`; `FOLLOW_PROTOCOLS: frozenset[str]` = `{"tcp", "udp", "http"}`; pure argv builders `summary_argv`, `detail_argv`, `stats_argv`, `hierarchy_argv`, `io_stats_argv`, `expert_argv`, `follow_argv`, `filter_check_argv`; and class `TsharkReader` wrapping them with execution.
 
 Signatures (all builders take `tshark: Path` first and return `list[str]`):
@@ -1089,7 +1107,7 @@ Signatures (all builders take `tshark: Path` first and return `list[str]`):
 - `io_stats_argv(tshark, path, interval_s: int)` → `-r path -q -z io,stat,<interval_s>`
 - `expert_argv(tshark, path)` → `-r path -q -z expert`
 - `follow_argv(tshark, path, protocol: str, index: int)` → `-r path -q -z follow,<protocol>,ascii,<index>`
-- `filter_check_argv(tshark, display_filter: str)` → `-Y filter -r <os.devnull> -c 0`
+- `filter_check_argv(dftest: Path, display_filter: str)` → `[dftest, display_filter]`. Wireshark ships `dftest`, whose entire job is compiling a display filter and reporting whether it is valid. `tshark -r /dev/null` cannot be used for this: it fails on the empty file itself, so every filter would look invalid.
 
 `stat_type` must be in `STAT_TYPES` and `protocol` in `FOLLOW_PROTOCOLS`, else `ToolError(ErrorKind.BAD_FILTER, ...)` — these are the only string values that reach argv other than the user's filters and the resolved path.
 
@@ -1167,9 +1185,9 @@ def test_follow_builds_expected_z_argument():
     assert "follow,tcp,ascii,3" in follow_argv(TSHARK, CAP, "tcp", 3)
 
 
-def test_filter_check_reads_no_packets():
-    argv = filter_check_argv(TSHARK, "tcp")
-    assert argv[argv.index("-c") + 1] == "0"
+def test_filter_check_uses_dftest_with_the_filter_as_one_element():
+    argv = filter_check_argv(Path("/usr/bin/dftest"), "tcp.port == 443")
+    assert argv == ["/usr/bin/dftest", "tcp.port == 443"]
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1188,7 +1206,6 @@ Argv construction is pure and separately tested; execution is a thin wrapper.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from .config import Config
@@ -1251,8 +1268,9 @@ def follow_argv(tshark: Path, path: Path, protocol: str, index: int) -> list[str
     ]
 
 
-def filter_check_argv(tshark: Path, display_filter: str) -> list[str]:
-    return [str(tshark), "-Y", display_filter, "-r", os.devnull, "-c", "0"]
+def filter_check_argv(dftest: Path, display_filter: str) -> list[str]:
+    """dftest compiles a display filter and reports whether it is valid."""
+    return [str(dftest), display_filter]
 
 
 class TsharkReader:
@@ -1271,8 +1289,16 @@ class TsharkReader:
         return check(result, ErrorKind.CAPTURE_FAILED, what).stdout
 
     def validate_filter(self, display_filter: str) -> None:
-        """Dry-run a display filter so a bad one fails here, not mid-analysis."""
-        result = run_command(filter_check_argv(self.tshark, display_filter), timeout_s=15)
+        """Compile a display filter so a bad one fails here, not mid-analysis.
+
+        Fails open: when dftest is not installed alongside tshark, validation is
+        skipped and an invalid filter surfaces from the read itself.
+        """
+        try:
+            dftest = find_binary("dftest")
+        except ToolError:
+            return
+        result = run_command(filter_check_argv(dftest, display_filter), timeout_s=15)
         if result.returncode != 0:
             raise ToolError(
                 ErrorKind.BAD_FILTER,

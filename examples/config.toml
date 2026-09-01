@@ -1,0 +1,21 @@
+# Copy to ~/.wireshark-mcp/config.toml (macOS)
+# or %LOCALAPPDATA%\wireshark-mcp\config.toml (Windows).
+# Every setting is optional.
+
+# workdir = "~/.wireshark-mcp"
+
+# Directories of existing capture files the server may READ. Nothing outside
+# the workdir and these directories can be opened.
+read_only_dirs = []
+
+# Interfaces live capture may use. Empty means every interface is allowed.
+# macOS ids look like "en0"; Windows ids look like
+# "\\Device\\NPF_{A1B2C3D4-0000-1111-2222-333344445555}".
+interface_allowlist = []
+
+[binaries]
+# Set these only when Wireshark is installed somewhere unusual.
+# tshark = "/opt/homebrew/bin/tshark"
+# dumpcap = "/opt/homebrew/bin/dumpcap"
+# capinfos = "/opt/homebrew/bin/capinfos"
+# dftest = "/opt/homebrew/bin/dftest"
