@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from wireshark_mcp.config import Config
@@ -111,3 +113,45 @@ def test_audit_appends_a_line(store):
     store.audit("start_capture", {"interface": "en0"})
     store.audit("packet_summary", {"capture": "cap-x"})
     assert len(store.audit_log.read_text().strip().splitlines()) == 2
+
+
+def test_resolve_success_writes_audit_record(store):
+    capture_id, path = store.new_capture_path()
+    path.write_bytes(b"")
+    store.resolve(capture_id)
+    lines = store.audit_log.read_text().strip().splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["tool"] == "resolve"
+    assert record["args"]["ref"] == capture_id
+    assert record["args"]["resolved"] == str(path)
+
+
+def test_resolve_rejection_writes_audit_record_naming_reason(store):
+    with pytest.raises(ToolError):
+        store.resolve("../../etc/passwd")
+    lines = store.audit_log.read_text().strip().splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert record["tool"] == "resolve_rejected"
+    assert record["args"]["ref"] == "../../etc/passwd"
+    assert record["args"]["reason"]
+
+
+def test_audit_log_is_valid_json_lines(store):
+    capture_id, path = store.new_capture_path()
+    path.write_bytes(b"")
+    store.resolve(capture_id)
+    with pytest.raises(ToolError):
+        store.resolve("/etc/passwd")
+    lines = store.audit_log.read_text().strip().splitlines()
+    assert len(lines) == 2
+    for line in lines:
+        record = json.loads(line)
+        assert "ts" in record and "tool" in record and "args" in record
+
+
+def test_resolve_rejects_embedded_nul_byte(store):
+    with pytest.raises(ToolError) as caught:
+        store.resolve("cap-\x00nope")
+    assert caught.value.kind is ErrorKind.PATH_REJECTED

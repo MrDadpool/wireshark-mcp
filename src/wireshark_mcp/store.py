@@ -39,7 +39,24 @@ class CaptureStore:
         )
 
     def resolve(self, capture_ref: str) -> Path:
-        """Map a capture id, filename, or path to a real file inside the sandbox."""
+        """Map a capture id, filename, or path to a real file inside the sandbox.
+
+        Every successful and rejected resolution is audited here, since this is
+        the single chokepoint every read tool and the capture:// resource pass
+        through.
+        """
+        try:
+            resolved = self._resolve(capture_ref)
+        except ToolError as exc:
+            if exc.kind is ErrorKind.PATH_REJECTED:
+                self.audit(
+                    "resolve_rejected", {"ref": capture_ref, "reason": exc.message}
+                )
+            raise
+        self.audit("resolve", {"ref": capture_ref, "resolved": str(resolved)})
+        return resolved
+
+    def _resolve(self, capture_ref: str) -> Path:
         if not capture_ref or capture_ref.strip() != capture_ref:
             raise self._reject(capture_ref, "empty or padded reference")
 
@@ -65,7 +82,11 @@ class CaptureStore:
         found_outside = False
         found_inside_missing = False
         for candidate in candidates:
-            resolved = candidate.resolve()  # follows symlinks; escapes become visible
+            try:
+                resolved = candidate.resolve()  # follows symlinks; escapes become visible
+            except (ValueError, OSError):
+                # e.g. an embedded NUL byte: not a sandbox escape, just a bad ref.
+                raise self._reject(capture_ref, "invalid path") from None
             inside = any(resolved.is_relative_to(root) for root in roots)
             if resolved.is_file():
                 if inside:

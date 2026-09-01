@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -100,15 +101,21 @@ def start_capture(
     bpf_filter: str = "",
 ) -> Any:
     """Capture live packets on an interface. Always bounded by BOTH duration_s and max_packets."""
-    return tool_result(
-        ctx().runner.capture, interface, duration_s, max_packets, bpf_filter or None
-    )
+
+    def body():
+        return ctx().runner.capture(interface, duration_s, max_packets, bpf_filter or None)
+
+    return tool_result(body)
 
 
 @mcp.tool()
 def list_captures() -> Any:
     """List capture files this server has stored."""
-    return tool_result(ctx().store.list_captures)
+
+    def body():
+        return ctx().store.list_captures()
+
+    return tool_result(body)
 
 
 @mcp.tool()
@@ -118,7 +125,6 @@ def packet_summary(capture: str, display_filter: str = "", limit: int = 100) -> 
     def body():
         path = ctx().store.resolve(capture)
         capped = clamp(limit, MAX_LIMIT, "limit")
-        ctx().store.audit("packet_summary", {"capture": capture, "filter": display_filter})
         return {"output": ctx().reader.summary(path, display_filter or None, capped)}
 
     return tool_result(body)
@@ -212,7 +218,7 @@ def follow_stream(capture: str, protocol: str = "tcp", index: int = 0) -> Any:
 def capture_resource(capture_id: str) -> str:
     """Metadata for one stored capture."""
     result = tool_result(lambda: ctx().reader.info(ctx().store.resolve(capture_id)))
-    return result if isinstance(result, str) else str(result)
+    return result if isinstance(result, str) else json.dumps(result)
 
 
 # -- prompts -------------------------------------------------------------
