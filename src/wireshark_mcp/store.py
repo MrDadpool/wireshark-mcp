@@ -48,7 +48,7 @@ class CaptureStore:
         # per-drive current directory, which is not a sandbox we control. A
         # rooted drive path ("C:\\dir\\file") is allowed through to the sandbox
         # check below, because on Windows every legitimate absolute path has one.
-        if capture_ref.startswith(("\\\\\\\\", "//")):
+        if capture_ref.startswith(("\\\\", "//")):
             raise self._reject(capture_ref, "UNC path")
         drive, rest = ntpath.splitdrive(capture_ref)
         if drive and not rest.startswith(("\\\\", "/")):

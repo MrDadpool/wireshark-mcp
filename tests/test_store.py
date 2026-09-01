@@ -51,6 +51,14 @@ def test_resolve_rejects_unc_paths(store):
     with pytest.raises(ToolError) as caught:
         store.resolve(r"\\server\share\x.pcapng")
     assert caught.value.kind is ErrorKind.PATH_REJECTED
+    assert "UNC" in caught.value.message
+
+
+def test_resolve_rejects_forward_slash_unc_paths(store):
+    with pytest.raises(ToolError) as caught:
+        store.resolve("//server/share/x.pcapng")
+    assert caught.value.kind is ErrorKind.PATH_REJECTED
+    assert "UNC" in caught.value.message
 
 
 def test_resolve_rejects_drive_relative_paths(store):
