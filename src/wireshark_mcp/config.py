@@ -33,6 +33,7 @@ class Config:
     tshark_path: str | None = None
     dumpcap_path: str | None = None
     capinfos_path: str | None = None
+    dftest_path: str | None = None
 
 
 def load_config(path: Path | None = None, system: str | None = None) -> Config:
@@ -55,6 +56,7 @@ def load_config(path: Path | None = None, system: str | None = None) -> Config:
         tshark_path=binaries.get("tshark"),
         dumpcap_path=binaries.get("dumpcap"),
         capinfos_path=binaries.get("capinfos"),
+        dftest_path=binaries.get("dftest"),
     )
 
 

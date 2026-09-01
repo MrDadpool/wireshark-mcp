@@ -108,7 +108,7 @@ class TsharkReader:
         skipped and an invalid filter surfaces from the read itself.
         """
         try:
-            dftest = find_binary("dftest")
+            dftest = find_binary("dftest", override=self._config.dftest_path)
         except ToolError:
             return
         result = run_command(filter_check_argv(dftest, display_filter), timeout_s=15)

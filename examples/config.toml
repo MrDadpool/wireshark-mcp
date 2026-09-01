@@ -18,3 +18,4 @@ interface_allowlist = []
 # tshark = "/opt/homebrew/bin/tshark"
 # dumpcap = "/opt/homebrew/bin/dumpcap"
 # capinfos = "/opt/homebrew/bin/capinfos"
+# dftest = "/opt/homebrew/bin/dftest"
