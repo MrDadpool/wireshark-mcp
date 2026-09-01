@@ -58,14 +58,33 @@ def load_config(path: Path | None = None, system: str | None = None) -> Config:
     )
 
 
-def clamp(value: int, ceiling: int, name: str) -> int:
-    """Return value, or raise if it is outside 1..ceiling. Never silently truncates."""
-    if value < 1:
-        raise ToolError(ErrorKind.LIMIT_EXCEEDED, f"{name} must be at least 1, got {value}")
-    if value > ceiling:
+def clamp(value: object, ceiling: int, name: str) -> int:
+    """Return value as an int, or raise if it is not integral or is outside 1..ceiling.
+
+    Never silently truncates: a fractional value is rejected rather than floored,
+    because a bound that quietly changes what the caller asked for is worse than
+    one that refuses.
+    """
+    try:
+        coerced = int(value)  # type: ignore[call-overload]
+    except (TypeError, ValueError, OverflowError) as exc:
         raise ToolError(
             ErrorKind.LIMIT_EXCEEDED,
-            f"{name} must be at most {ceiling}, got {value}",
+            f"{name} must be an integer, got {value!r}",
+        ) from exc
+
+    if isinstance(value, float) and coerced != value:
+        raise ToolError(
+            ErrorKind.LIMIT_EXCEEDED,
+            f"{name} must be a whole number, got {value!r}",
+        )
+
+    if coerced < 1:
+        raise ToolError(ErrorKind.LIMIT_EXCEEDED, f"{name} must be at least 1, got {coerced}")
+    if coerced > ceiling:
+        raise ToolError(
+            ErrorKind.LIMIT_EXCEEDED,
+            f"{name} must be at most {ceiling}, got {coerced}",
             hint=f"Retry with {name} <= {ceiling}.",
         )
-    return value
+    return coerced

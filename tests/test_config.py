@@ -56,3 +56,29 @@ def test_config_file_is_read(tmp_path):
     assert cfg.interface_allowlist == ("en0", "lo0")
     assert cfg.tshark_path == "/opt/homebrew/bin/tshark"
     assert cfg.workdir == tmp_path
+
+
+def test_clamp_rejects_non_numeric_types():
+    for bad in ("notanint", None, [1], {"a": 1}):
+        with pytest.raises(ToolError) as caught:
+            clamp(bad, MAX_DURATION_S, "duration_s")
+        assert caught.value.kind is ErrorKind.LIMIT_EXCEEDED
+
+
+def test_clamp_accepts_integer_like_strings():
+    assert clamp("10", MAX_DURATION_S, "duration_s") == 10
+
+
+def test_clamp_rejects_fractional_values():
+    with pytest.raises(ToolError) as caught:
+        clamp(10.9, MAX_DURATION_S, "duration_s")
+    assert caught.value.kind is ErrorKind.LIMIT_EXCEEDED
+
+
+def test_clamp_accepts_integral_float():
+    assert clamp(10.0, MAX_DURATION_S, "duration_s") == 10
+
+
+def test_clamp_rejects_infinity():
+    with pytest.raises(ToolError):
+        clamp(float("inf"), MAX_DURATION_S, "duration_s")
