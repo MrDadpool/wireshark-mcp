@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import getpass
 import os
 import platform as _platform
 import re
@@ -28,9 +29,6 @@ def install_hint(system: str | None = None) -> str:
     return _INSTALL_HINTS.get(system or current_system(), _DEFAULT_HINT)
 
 
-INSTALL_HINT = install_hint()
-
-
 def candidate_dirs(system: str) -> list[Path]:
     if system == "Darwin":
         return [
@@ -54,7 +52,7 @@ def _filename(name: str, system: str) -> str:
 def find_binary(
     name: str,
     system: str | None = None,
-    path_env: str | None = None,
+    path_env: str | None = None,  # test seam: overrides PATH lookup for shutil.which
     override: str | None = None,
 ) -> Path:
     """Resolve a Wireshark binary. Order: override, PATH, known install dirs."""
@@ -133,7 +131,7 @@ def capture_permitted(system: str | None = None) -> tuple[bool, str]:
                 "ChmodBPF is not installed, so /dev/bpf* is root-only. "
                 "Install Wireshark's ChmodBPF component and log out and back in."
             )
-        user = os.environ.get("USER", "")
+        user = getpass.getuser()
         if user in members or os.geteuid() == 0:
             return True, "BPF access available via the access_bpf group."
         return False, (
