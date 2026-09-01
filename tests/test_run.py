@@ -45,3 +45,26 @@ def test_check_upgrades_permission_errors():
     with pytest.raises(ToolError) as caught:
         check(result, ErrorKind.CAPTURE_FAILED, "capture")
     assert caught.value.kind is ErrorKind.PERMISSION_DENIED
+
+
+def test_check_does_not_upgrade_unrelated_errors():
+    result = run_command(
+        [sys.executable, "-c",
+         "import sys; sys.stderr.write('syntax error in filter'); raise SystemExit(2)"],
+        timeout_s=10,
+    )
+    with pytest.raises(ToolError) as caught:
+        check(result, ErrorKind.BAD_FILTER, "filter check")
+    assert caught.value.kind is ErrorKind.BAD_FILTER
+
+
+def test_timeout_kills_the_child_process():
+    import os as _os
+    marker = "sleep-marker-for-timeout-test"
+    with pytest.raises(ToolError):
+        run_command(
+            [sys.executable, "-c", f"# {marker}\nimport time; time.sleep(30)"],
+            timeout_s=1,
+        )
+    survivors = _os.popen(f"pgrep -f {marker}").read().strip()
+    assert survivors == "", f"child survived the timeout: {survivors}"

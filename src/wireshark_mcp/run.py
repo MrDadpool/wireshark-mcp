@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import signal
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,17 +20,27 @@ class CommandResult:
     stderr: str
 
 
+def _kill_process_group(popen: subprocess.Popen) -> None:
+    """Kill the child and anything it spawned. Falls back to the child alone."""
+    try:
+        os.killpg(os.getpgid(popen.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, AttributeError, OSError):
+        # AttributeError: killpg/getpgid are absent on Windows.
+        popen.kill()
+
+
 def run_command(argv: list[str | Path], timeout_s: int) -> CommandResult:
     args = [str(a) for a in argv]
+    # start_new_session puts the child in its own process group, so a timeout
+    # can kill the whole group rather than orphaning any helper it spawned.
     try:
-        # argv built in code, never from the model
-        completed = subprocess.run(
+        popen = subprocess.Popen(  # argv built in code, never from the model
             args,
             shell=False,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout_s,
-            check=False,
+            start_new_session=True,
         )
     except FileNotFoundError as exc:
         raise ToolError(
@@ -36,12 +48,18 @@ def run_command(argv: list[str | Path], timeout_s: int) -> CommandResult:
             f"executable not found: {args[0]}",
             hint="Install Wireshark, or set the binary path in config.toml.",
         ) from exc
+
+    try:
+        stdout, stderr = popen.communicate(timeout=timeout_s)
     except subprocess.TimeoutExpired as exc:
+        _kill_process_group(popen)
+        popen.communicate()
         raise ToolError(
             ErrorKind.CAPTURE_FAILED,
             f"{args[0]} exceeded its {timeout_s}s timeout",
         ) from exc
-    return CommandResult(completed.returncode, completed.stdout, completed.stderr)
+
+    return CommandResult(popen.returncode, stdout, stderr)
 
 
 def check(result: CommandResult, kind: ErrorKind, what: str) -> CommandResult:
