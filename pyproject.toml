@@ -5,7 +5,7 @@ description = "MCP server exposing Wireshark CLI tooling (tshark/dumpcap) to loc
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-dependencies = ["mcp>=1.2.0"]
+dependencies = ["mcp>=2.0"]
 
 [project.scripts]
 wireshark-mcp = "wireshark_mcp.server:main"
