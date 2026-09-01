@@ -47,10 +47,10 @@ def test_missing_config_file_yields_defaults(tmp_path):
 def test_config_file_is_read(tmp_path):
     cfg_file = tmp_path / "config.toml"
     cfg_file.write_text(
-        'workdir = "%s"\n'
+        f'workdir = "{tmp_path.as_posix()}"\n'
         'interface_allowlist = ["en0", "lo0"]\n'
         "\n[binaries]\n"
-        'tshark = "/opt/homebrew/bin/tshark"\n' % tmp_path.as_posix()
+        'tshark = "/opt/homebrew/bin/tshark"\n'
     )
     cfg = load_config(cfg_file, system="Darwin")
     assert cfg.interface_allowlist == ("en0", "lo0")
