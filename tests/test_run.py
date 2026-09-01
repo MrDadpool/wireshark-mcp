@@ -62,8 +62,10 @@ def test_check_does_not_upgrade_unrelated_errors():
 
 
 @pytest.mark.skipif(shutil.which("pgrep") is None, reason="pgrep not available")
-def test_timeout_kills_the_child_and_its_descendants(tmp_path):
-    """The child spawns a grandchild; only a process-group kill reaps both."""
+def test_timeout_kills_descendants_and_returns_promptly(tmp_path):
+    """A surviving grandchild inherits the stdout pipe, so a direct-child-only
+    kill makes communicate() block until that grandchild exits. Killing the
+    process group is what makes the timeout actually bound the call."""
     marker = "wireshark-mcp-orphan-marker"
     script = tmp_path / "spawner.py"
     script.write_text(
@@ -71,13 +73,20 @@ def test_timeout_kills_the_child_and_its_descendants(tmp_path):
         f"subprocess.Popen([sys.executable, '-c', \"# {marker}\\nimport time; time.sleep(30)\"])\n"
         "time.sleep(30)\n"
     )
+
+    started = time.monotonic()
     with pytest.raises(ToolError):
         run_command([sys.executable, str(script)], timeout_s=2)
+    elapsed = time.monotonic() - started
 
-    time.sleep(0.5)  # let the signal land
     survivors = subprocess.run(
         ["pgrep", "-f", marker], capture_output=True, text=True, check=False
     ).stdout.strip()
     if survivors:
-        subprocess.run(["pkill", "-f", marker], check=False)  # never leak test processes
+        subprocess.run(["pkill", "-f", marker], check=False)
+
+    assert elapsed < 10, (
+        f"run_command took {elapsed:.1f}s to return; a descendant still held "
+        "the inherited pipe, so the process group was not killed"
+    )
     assert survivors == "", f"grandchild survived the timeout: {survivors}"
