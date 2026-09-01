@@ -50,3 +50,15 @@ def test_missing_binary_raises_with_install_hint(tmp_path, monkeypatch):
         find_binary("tshark", system="Darwin", path_env=str(tmp_path))
     assert caught.value.kind is ErrorKind.BINARY_MISSING
     assert caught.value.hint
+
+
+def test_found_in_candidate_dir_when_not_on_path(tmp_path, monkeypatch):
+    install_dir = tmp_path / "install"
+    install_dir.mkdir()
+    empty_path_dir = tmp_path / "empty"
+    empty_path_dir.mkdir()
+    exe = install_dir / "tshark"
+    exe.write_text("")
+    exe.chmod(0o755)
+    monkeypatch.setattr("wireshark_mcp.platform.candidate_dirs", lambda system: [install_dir])
+    assert find_binary("tshark", system="Darwin", path_env=str(empty_path_dir)) == exe
