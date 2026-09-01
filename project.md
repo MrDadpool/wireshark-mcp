@@ -3,7 +3,9 @@
 Last updated: 2026-09-01
 
 ## Now
-- v0.1.0 complete; manual LM Studio verification pending.
+- v0.1.0 complete and verified end to end. Registered in ~/.lmstudio/mcp.json;
+  12 tools reachable over stdio, live loopback capture and analysis confirmed,
+  path sandbox and capture ceilings confirmed to hold through real MCP calls.
 
 ## Next up
 - Manually verify the server against LM Studio on macOS (and Windows, if available).
