@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import platform as _platform
+import re
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 from .errors import ErrorKind, ToolError
@@ -83,3 +85,65 @@ def find_binary(
         f"could not find {name} on this system",
         hint=install_hint(system),
     )
+
+
+_INTERFACE_LINE = re.compile(r"^\s*\d+\.\s+(?P<id>\S+)(?:\s+\((?P<desc>.*)\))?\s*$")
+
+
+@dataclass(frozen=True)
+class Interface:
+    id: str
+    description: str
+    loopback: bool
+
+
+def _is_loopback(iface_id: str, description: str) -> bool:
+    return iface_id in {"lo", "lo0"} or "loopback" in description.lower()
+
+
+def parse_interfaces(output: str) -> list[Interface]:
+    """Parse `dumpcap -D` output. Unrecognized lines are skipped, not an error."""
+    interfaces: list[Interface] = []
+    for line in output.splitlines():
+        match = _INTERFACE_LINE.match(line)
+        if not match:
+            continue
+        iface_id = match.group("id")
+        description = match.group("desc") or ""
+        interfaces.append(
+            Interface(
+                id=iface_id,
+                description=description,
+                loopback=_is_loopback(iface_id, description),
+            )
+        )
+    return interfaces
+
+
+def capture_permitted(system: str | None = None) -> tuple[bool, str]:
+    """Best-effort check of whether live capture will work without elevation."""
+    system = system or current_system()
+    if system == "Darwin":
+        import grp
+
+        try:
+            members = set(grp.getgrnam("access_bpf").gr_mem)
+        except KeyError:
+            return False, (
+                "ChmodBPF is not installed, so /dev/bpf* is root-only. "
+                "Install Wireshark's ChmodBPF component and log out and back in."
+            )
+        user = os.environ.get("USER", "")
+        if user in members or os.geteuid() == 0:
+            return True, "BPF access available via the access_bpf group."
+        return False, (
+            f"user {user!r} is not in the access_bpf group. "
+            "Run Wireshark's 'Install ChmodBPF' and log out and back in."
+        )
+    if system == "Windows":
+        return True, (
+            "Npcap must be installed. If it was installed with "
+            "'Restrict Npcap driver's access to Administrators only', this server "
+            "must run elevated to capture."
+        )
+    return True, "Capture permission not checked on this platform."
