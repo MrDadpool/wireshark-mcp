@@ -71,3 +71,26 @@ def test_follow_builds_expected_z_argument():
 def test_filter_check_uses_dftest_with_the_filter_as_one_element():
     argv = filter_check_argv(Path("/usr/bin/dftest"), "tcp.port == 443")
     assert argv == ["/usr/bin/dftest", "tcp.port == 443"]
+
+
+def test_io_stats_rejects_non_integer_interval():
+    with pytest.raises(ToolError) as caught:
+        io_stats_argv(TSHARK, CAP, "notanint")
+    assert caught.value.kind is ErrorKind.BAD_FILTER
+
+
+def test_follow_rejects_non_integer_index():
+    with pytest.raises(ToolError) as caught:
+        follow_argv(TSHARK, CAP, "tcp", "notanint")
+    assert caught.value.kind is ErrorKind.BAD_FILTER
+
+
+def test_detail_rejects_non_integer_frame_number():
+    with pytest.raises(ToolError) as caught:
+        detail_argv(TSHARK, CAP, "notanint")
+    assert caught.value.kind is ErrorKind.BAD_FILTER
+
+
+def test_integer_like_strings_are_still_accepted():
+    assert "frame.number==42" in detail_argv(TSHARK, CAP, "42")
+    assert "io,stat,5" in io_stats_argv(TSHARK, CAP, "5")

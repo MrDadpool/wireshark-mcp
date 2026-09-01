@@ -27,6 +27,17 @@ def _validate(value: str, allowed: frozenset[str], name: str) -> str:
     return value
 
 
+def _as_int(value: object, name: str) -> int:
+    """Coerce a model-supplied value to int, as a ToolError rather than a ValueError."""
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise ToolError(
+            ErrorKind.BAD_FILTER,
+            f"{name} must be an integer, got {value!r}",
+        ) from exc
+
+
 def summary_argv(
     tshark: Path, path: Path, display_filter: str | None, limit: int
 ) -> list[str]:
@@ -38,6 +49,7 @@ def summary_argv(
 
 
 def detail_argv(tshark: Path, path: Path, frame_no: int) -> list[str]:
+    frame_no = _as_int(frame_no, "frame_no")
     return [str(tshark), "-r", str(path), "-Y", f"frame.number=={frame_no}", "-V"]
 
 
@@ -52,7 +64,8 @@ def hierarchy_argv(tshark: Path, path: Path) -> list[str]:
 
 
 def io_stats_argv(tshark: Path, path: Path, interval_s: int) -> list[str]:
-    return [str(tshark), "-r", str(path), "-q", "-z", f"io,stat,{int(interval_s)}"]
+    interval_s = _as_int(interval_s, "interval_s")
+    return [str(tshark), "-r", str(path), "-q", "-z", f"io,stat,{interval_s}"]
 
 
 def expert_argv(tshark: Path, path: Path) -> list[str]:
@@ -61,9 +74,10 @@ def expert_argv(tshark: Path, path: Path) -> list[str]:
 
 def follow_argv(tshark: Path, path: Path, protocol: str, index: int) -> list[str]:
     _validate(protocol, FOLLOW_PROTOCOLS, "protocol")
+    index = _as_int(index, "index")
     return [
         str(tshark), "-r", str(path), "-q", "-z",
-        f"follow,{protocol},ascii,{int(index)}",
+        f"follow,{protocol},ascii,{index}",
     ]
 
 
