@@ -44,7 +44,8 @@ def test_windows_appends_exe_suffix(tmp_path):
     assert found.name == "tshark.exe"
 
 
-def test_missing_binary_raises_with_install_hint(tmp_path):
+def test_missing_binary_raises_with_install_hint(tmp_path, monkeypatch):
+    monkeypatch.setattr("wireshark_mcp.platform.candidate_dirs", lambda system: [])
     with pytest.raises(ToolError) as caught:
         find_binary("tshark", system="Darwin", path_env=str(tmp_path))
     assert caught.value.kind is ErrorKind.BINARY_MISSING
