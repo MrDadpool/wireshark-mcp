@@ -1,5 +1,8 @@
 # tests/test_run.py
+import shutil
+import subprocess
 import sys
+import time
 
 import pytest
 
@@ -58,13 +61,23 @@ def test_check_does_not_upgrade_unrelated_errors():
     assert caught.value.kind is ErrorKind.BAD_FILTER
 
 
-def test_timeout_kills_the_child_process():
-    import os as _os
-    marker = "sleep-marker-for-timeout-test"
+@pytest.mark.skipif(shutil.which("pgrep") is None, reason="pgrep not available")
+def test_timeout_kills_the_child_and_its_descendants(tmp_path):
+    """The child spawns a grandchild; only a process-group kill reaps both."""
+    marker = "wireshark-mcp-orphan-marker"
+    script = tmp_path / "spawner.py"
+    script.write_text(
+        "import subprocess, sys, time\n"
+        f"subprocess.Popen([sys.executable, '-c', \"# {marker}\\nimport time; time.sleep(30)\"])\n"
+        "time.sleep(30)\n"
+    )
     with pytest.raises(ToolError):
-        run_command(
-            [sys.executable, "-c", f"# {marker}\nimport time; time.sleep(30)"],
-            timeout_s=1,
-        )
-    survivors = _os.popen(f"pgrep -f {marker}").read().strip()
-    assert survivors == "", f"child survived the timeout: {survivors}"
+        run_command([sys.executable, str(script)], timeout_s=2)
+
+    time.sleep(0.5)  # let the signal land
+    survivors = subprocess.run(
+        ["pgrep", "-f", marker], capture_output=True, text=True, check=False
+    ).stdout.strip()
+    if survivors:
+        subprocess.run(["pkill", "-f", marker], check=False)  # never leak test processes
+    assert survivors == "", f"grandchild survived the timeout: {survivors}"
